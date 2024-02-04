@@ -1,0 +1,107 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity T_THERMO is
+end entity;
+
+architecture TEST of T_THERMO is
+  component THERMO
+    port (CLK            : in  std_logic;
+          CURRENT_TEMP   : in  std_logic_vector(6 downto 0);
+          DESIRED_TEMP   : in  std_logic_vector(6 downto 0);
+          DISPLAY_SELECT : in  std_logic;
+          HEAT           : in  std_logic;
+          COOL           : in  std_logic;
+          AC_READY       : in  std_logic;
+          FURNACE_HOT    : in  std_logic;
+          TEMP_DISPLAY   : out std_logic_vector(6 downto 0);
+          AC_ON          : out std_logic;
+          FURNACE_ON     : out std_logic;
+          FAN_ON         : out std_logic
+         );
+  end component;
+
+  signal CURRENT_TEMP, DESIRED_TEMP    : std_logic_vector(6 downto 0);
+  signal TEMP_DISPLAY                  : std_logic_vector(6 downto 0);
+  signal DISPLAY_SELECT                : std_logic;
+  signal HEAT, COOL, AC_ON, FURNACE_ON : std_logic;
+  signal AC_READY, FURNACE_HOT, FAN_ON : std_logic;
+  signal CLK                           : std_logic := '0';
+
+begin
+
+  CLK <= not CLK after 5 ns;
+
+  UUT: THERMO
+    port map (CLK            => CLK,
+              CURRENT_TEMP   => CURRENT_TEMP,
+              DESIRED_TEMP   => DESIRED_TEMP,
+              DISPLAY_SELECT => DISPLAY_SELECT,
+              TEMP_DISPLAY   => TEMP_DISPLAY,
+              HEAT           => HEAT,
+              COOL           => COOL,
+              AC_ON          => AC_ON,
+              AC_READY       => AC_READY,
+              FURNACE_HOT    => FURNACE_HOT,
+              FAN_ON         => FAN_ON,
+              FURNACE_ON     => FURNACE_ON);
+
+  process
+  begin
+    FURNACE_HOT <= '0';
+    AC_READY <= '0';
+    HEAT <= '0';
+    COOL <= '0';
+
+    -----------------------
+    -- Display TEST
+    -----------------------
+    CURRENT_TEMP <= "0010000"; -- 16
+    DESIRED_TEMP <= "0010101"; -- 21
+    DISPLAY_SELECT <= '0';
+    wait for 50 ns;
+    assert TEMP_DISPLAY = DESIRED_TEMP report "Display Test: 1st out signals check" severity error;
+    DISPLAY_SELECT <= '1';
+    wait for 50 ns;
+    assert TEMP_DISPLAY = CURRENT_TEMP report "Display Test: 2st out signals check" severity error;
+
+    -----------------------
+    -- Heating TEST
+    -----------------------
+    CURRENT_TEMP <= "0000000";
+    DESIRED_TEMP <= "1111111";
+    HEAT <= '1';
+    wait until FURNACE_ON = '1';
+    assert FURNACE_ON = '1' and AC_ON = '0' and FAN_ON = '0' report "Heat Test: 1st out signals check" severity error;
+    FURNACE_HOT <= '1';
+    wait until FAN_ON = '1';
+    assert FURNACE_ON = '1' and AC_ON = '0' and FAN_ON = '1' report "Heat Test: 2nd out signals check" severity error;
+    HEAT <= '0';
+    wait until FURNACE_ON = '0';
+    assert FURNACE_ON = '0' and AC_ON = '0' and FAN_ON = '1' report "Heat Test: 3rd out signals check" severity error;
+    FURNACE_HOT <= '0';
+    wait for 120 ns;
+    assert FURNACE_ON = '0' and AC_ON = '0' and FAN_ON = '0' report "Heat Test: 4th out signals check" severity error;
+
+    -----------------------
+    -- AC test
+    -----------------------    -- 
+    CURRENT_TEMP <= "1000000";
+    DESIRED_TEMP <= "0100000";
+    -- wait for 50 ns;
+    COOL <= '1';
+    wait until AC_ON = '1';
+    assert FURNACE_ON = '0' and AC_ON = '1' and FAN_ON = '0' report "AC Test: 1st out signals check" severity error;
+    AC_READY <= '1';
+    wait until FAN_ON = '1';
+    assert FURNACE_ON = '0' and AC_ON = '1' and FAN_ON = '1' report "AC Test: 2nd out signals check" severity error;
+    COOL <= '0';
+    wait for 30 ns;
+    assert FURNACE_ON = '0' and AC_ON = '0' and FAN_ON = '1' report "AC Test: 3rd out signals check" severity error;
+    AC_READY <= '0';
+    wait for 250 ns;
+    assert FURNACE_ON = '0' and AC_ON = '0' and FAN_ON = '0' report "AC Test: 4th out signals check" severity error;
+
+    assert FALSE report "Simulation Finished" severity failure;
+ end process;
+end architecture;
