@@ -1,0 +1,306 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.std_logic_unsigned.all;
+
+entity THERMO is
+    port(   CLK             : in std_logic;
+            RST             : in std_logic;
+            CURRENT_TEMP    : in std_logic_vector(6 downto 0);
+            DESIRED_TEMP    : in std_logic_vector(6 downto 0);
+            DISPLAY_SELECT  : in std_logic;
+            COOL            : in std_logic;
+            HEAT            : in std_logic;
+            AC_READY        : in std_logic;
+            FURNACE_HOT     : in std_logic;            
+            TEMP_DISPLAY    : out std_logic_vector(6 downto 0);
+            AC_ON           : out std_logic;
+            FURNACE_ON      : out std_logic;
+            FAN_ON          : out std_logic
+            );
+end THERMO;
+
+architecture RTL of THERMO is
+
+type STATE_TYPE is (IDLE,HEATON,FURNACENOWHOT,FURNACECOOL,
+                    COOLON,ACNOWREADY,ACDONE);
+signal state, next_state : STATE_TYPE;                 
+
+signal CURRENT_TEMP_REG : std_logic_vector (6 downto 0);
+signal DESIRED_TEMP_REG : std_logic_vector (6 downto 0);
+signal DISPLAY_SELECT_REG : std_logic;
+signal HEAT_REG : std_logic;
+signal COOL_REG : std_logic;
+signal AC_READY_REG : std_logic;
+signal FURNACE_HOT_REG : std_logic;
+
+signal COUNTDOWN : std_logic_vector(4 downto 0);    -- 2^5 = 32
+
+
+begin
+    
+    -- It creates the signal registers to the implemention of flip-flops
+    REGISTERS : process(CLK)
+    begin
+        if rising_edge(CLK) then         -- if CLK would be std_logic, we can use rising_edge(CLK)
+            CURRENT_TEMP_REG <= CURRENT_TEMP;   -- the processes use the register for get/assign the value of each input
+            DESIRED_TEMP_REG <= DESIRED_TEMP;
+            DISPLAY_SELECT_REG <= DISPLAY_SELECT;
+            HEAT_REG <= HEAT;
+            COOL_REG <= COOL;
+            AC_READY_REG <= AC_READY;
+            FURNACE_HOT_REG <= FURNACE_HOT;
+        end if;
+    end process;
+    
+    
+    -- It show the diferent temperature (desired or current) on the display
+    DISPLAY: process(CLK)
+    begin
+        
+        if rising_edge(CLK) then
+            if DISPLAY_SELECT_REG = '1' then
+                TEMP_DISPLAY <= CURRENT_TEMP_REG;
+            else
+                TEMP_DISPLAY <= DESIRED_TEMP_REG;
+            end if; 
+        end if;
+        
+    end process;
+    
+    -- It decides if it has to cool or heat  
+    FURNACE: process(CLK)
+    begin
+        
+        if rising_edge(CLK) then
+
+            if (DESIRED_TEMP_REG < CURRENT_TEMP_REG) and COOL_REG = '1' then
+                AC_ON <= '1';
+            else
+                AC_ON <= '0';
+            end if;
+            
+            if (DESIRED_TEMP_REG > CURRENT_TEMP_REG) and HEAT_REG = '1' then
+                FURNACE_ON <= '1';
+            else
+                FURNACE_ON <= '0';
+            end if;
+        end if;
+        
+    end process;
+    
+    -- STATE MACHINE
+    STATE_CONTROL: process(CLK)
+    begin
+        if rising_edge(CLK) then
+            state <= next_state;
+        end if;
+    end process;
+    
+    STATE_CONDITION: process(state,CURRENT_TEMP_REG,DESIRED_TEMP_REG,DISPLAY_SELECT_REG,HEAT_REG,COOL_REG,AC_READY_REG,FURNACE_HOT_REG,COUNTDOWN)
+    begin
+        case (state) is
+            when IDLE =>
+                if (DESIRED_TEMP_REG > CURRENT_TEMP_REG) and HEAT_REG = '1' then
+                    next_state <= HEATON;
+                elsif (DESIRED_TEMP_REG < CURRENT_TEMP_REG) and COOL_REG = '1' then
+                    next_state <= COOLON;
+                else
+                    next_state <= IDLE;
+                end if;
+                
+            when HEATON =>            
+                if FURNACE_HOT_REG = '1' then
+                    next_state <= FURNACENOWHOT;
+                else
+                    next_state <= HEATON;
+                end if;
+            
+            when FURNACENOWHOT =>
+                if not(HEAT_REG = '1' and CURRENT_TEMP_REG < DESIRED_TEMP_REG) then
+                    next_state <= FURNACECOOL;
+                else
+                    next_state <= FURNACENOWHOT;
+                end if;
+            
+            when FURNACECOOL =>
+                if FURNACE_HOT_REG = '0' and COUNTDOWN = 0 then
+                    next_state <= IDLE;
+                else 
+                    next_state <= FURNACECOOL;
+                end if;
+                
+            when COOLON =>
+                if AC_READY_REG = '1' then
+                    next_state <= ACNOWREADY;
+                else 
+                    next_state <= COOLON;
+                end if;
+                
+            when ACNOWREADY =>
+                if not(COOL_REG = '1' and CURRENT_TEMP_REG > DESIRED_TEMP_REG) then
+                    next_state <= ACDONE;
+                else
+                    next_state <= ACNOWREADY;
+                end if;
+                
+            when ACDONE =>
+                if AC_READY_REG = '0' and COUNTDOWN = 0 then
+                    next_state <= IDLE;
+                else
+                    next_state <= ACDONE;                     
+                end if;
+                
+            when others =>
+                next_state <= IDLE;
+                
+        end case;
+            
+    end process;
+    
+    STATE_VALUE: process(CLK)
+    begin
+        if rising_edge(CLK) then
+            if next_state = HEATON or next_state = FURNACENOWHOT then
+                FURNACE_ON <= '1';
+            else
+                FURNACE_ON <= '0';
+            end if;
+            
+            if next_state = COOLON or next_state = ACNOWREADY then
+                AC_ON <= '1';
+            else 
+                AC_ON <= '0';
+            end if;
+            
+            if next_state = ACNOWREADY or next_state = ACDONE or next_state = FURNACENOWHOT or next_state = FURNACECOOL then
+                FAN_ON <= '1';
+            else
+                FAN_ON <= '0';
+            end if;
+            
+        end if; 
+    end process;
+    
+    -- INIT OF THE COUNTER IN EACH STATE
+    COUNTER: process(CLK)
+    begin
+        if rising_edge(CLK) then
+            if next_state = FURNACENOWHOT then
+                COUNTDOWN <= "01010";   --10
+            elsif next_state = ACNOWREADY then
+                COUNTDOWN <= "10100";   --20
+            elsif next_state = FURNACECOOL or next_state = ACDONE then
+                COUNTDOWN <= COUNTDOWN - 1;
+            end if;
+        end if;
+    end process;   
+end RTL;   
+
+
+
+     
+My testbench:
+
+
+
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity T_THERMO is
+end T_THERMO;
+
+architecture TEST of T_THERMO is
+
+component THERMO 
+    port(   CLK             : in std_logic;
+            RST             : in std_logic;
+            CURRENT_TEMP    : in std_logic_vector(6 downto 0);
+            DESIRED_TEMP    : in std_logic_vector(6 downto 0);
+            DISPLAY_SELECT  : in std_logic;
+            COOL            : in std_logic;
+            HEAT            : in std_logic;
+            AC_READY        : in std_logic;
+            FURNACE_HOT     : in std_logic;            
+            TEMP_DISPLAY    : out std_logic_vector(6 downto 0);
+            AC_ON           : out std_logic;
+            FURNACE_ON      : out std_logic;
+            FAN_ON          : out std_logic
+            );
+end component;
+
+signal CLK : std_logic := '0';
+signal RST : std_logic;
+signal CURRENT_TEMP, DESIRED_TEMP : std_logic_vector(6 downto 0);
+signal COOL, HEAT : std_logic;
+signal DISPLAY_SELECT : std_logic;
+signal TEMP_DISPLAY : std_logic_vector(6 downto 0);
+signal AC_ON, FURNACE_ON : std_logic;
+signal AC_READY, FURNACE_HOT, FAN_ON : std_logic;
+
+begin
+
+    CLK <= not CLK after 5 ns;
+
+    UUT : THERMO port map ( CLK => CLK,
+                            RST => RST,
+                            CURRENT_TEMP => CURRENT_TEMP,
+                            DESIRED_TEMP => DESIRED_TEMP,
+                            DISPLAY_SELECT => DISPLAY_SELECT,
+                            COOL => COOL,
+                            HEAT => HEAT,
+                            TEMP_DISPLAY => TEMP_DISPLAY,
+                            AC_ON => AC_ON,
+                            AC_READY => AC_READY,
+                            FURNACE_HOT => FURNACE_HOT,
+                            FAN_ON => FAN_ON,
+                            FURNACE_ON => FURNACE_ON);
+                         
+    process
+    begin
+        
+        -- INITIALIZATION
+        FURNACE_HOT <= '0';
+        AC_READY <= '0';
+        HEAT <= '0';
+        COOL <= '0';
+        
+        -- DISPLAY TEST & PREPARE FURNACE TEST
+        CURRENT_TEMP <= "0000000";
+        DESIRED_TEMP <= "1111111";
+        DISPLAY_SELECT <= '0';
+        wait for 50 ns;
+        DISPLAY_SELECT <= '1';
+        
+        -- FURNACE TEST
+        wait for 50 ns;
+        HEAT <= '1';
+        wait until FURNACE_ON = '1';    -- wait until state = HEATON
+        FURNACE_HOT <= '1';
+        wait until FAN_ON = '1';        -- wait until state = FURNACENOWHOT
+        HEAT <= '0';
+        wait until FURNACE_ON = '0';    -- wait until state = FURNACECOOL
+        FURNACE_HOT <= '0';
+        wait for 50 ns;                 -- wait until state = IDLE
+        HEAT <= '0';
+        
+        -- DISPLAY TEST & PREPARE AC TEST
+        wait for 150 ns;
+        CURRENT_TEMP <= "1000000";
+        DESIRED_TEMP <= "0100000";
+        
+        -- AC TEST
+        wait for 50 ns;
+        COOL <= '1';
+        wait until AC_ON = '1';     -- wait until state = COOLON
+        AC_READY <= '1';
+        wait until FAN_ON = '1';    -- wait until state = ACNOWREADY
+        COOL <= '0';
+        wait until AC_ON <= '0';    -- wait until state = ACDONE
+        AC_READY <= '0';
+        wait for 50 ns;             -- wait until state = IDLE
+        COOL <= '0';
+        wait for 50 ns;
+        wait;
+    end process;
+
+end;
