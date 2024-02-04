@@ -1,0 +1,158 @@
+entity temp_ctl is
+
+  Port (
+    current_temp    : in bit_vector(6 downto 0);
+    desired_temp    : in bit_vector(6 downto 0);
+    display_select  : in bit;
+    cool            : in bit;
+    heat            : in bit;
+    temp_display    : out bit_vector(6 downto 0);
+    a_c_on          : out bit;
+    furnace_on      : out bit
+  );
+end temp_ctl;
+
+architecture rtl of temp_ctl is   
+begin
+
+    DISPMUX : process(current_temp, desired_temp, display_select)   
+
+    begin
+        if (display_select = '1') then
+            temp_display <= current_temp;
+        else
+            temp_display <= desired_temp;
+        end if;
+    end process DISPMUX;
+
+   
+    AC_CTL : process(current_temp, desired_temp, cool)
+
+    begin
+        if (cool = '1') and (desired_temp < current_temp) then
+            a_c_on <= '1';
+        else
+            a_c_on <= '0';
+        end if;
+    end process AC_CTL;
+
+    FURNACE_CTL : process(current_temp, desired_temp, heat)   
+
+    begin
+        if (heat = '1') and (desired_temp > current_temp) then
+            furnace_on <= '1';
+        else
+            furnace_on <= '0';
+        end if;
+    end process FURNACE_CTL;
+end rtl;
+
+
+The developed testbench for the thermostat component is as follows.
+
+entity tb_temp_ctl is
+--  Port ( );
+end tb_temp_ctl;
+
+
+architecture test_behav of tb_temp_ctl is
+
+component temp_ctl is
+  Port (
+    current_temp    : in bit_vector(6 downto 0);
+    desired_temp    : in bit_vector(6 downto 0)
+    display_select  : in bit;
+    cool            : in bit;
+    heat            : in bit;
+    temp_display    : out bit_vector(6 downto 0);
+    a_c_on          : out bit;
+    furnace_on      : out bit
+  );
+end component;
+
+signal current_temp    : bit_vector(6 downto 0);
+signal desired_temp    : bit_vector(6 downto 0);
+signal display_select  : bit;
+signal cool            : bit;
+signal heat            : bit;
+signal temp_display    : bit_vector(6 downto 0);
+signal a_c_on          : bit;
+signal furnace_on      : bit;
+
+begin
+
+    UUT: temp_ctl port map (
+      current_temp    => current_temp,
+      desired_temp    => desired_temp,
+      display_select  => display_select,
+      cool            => cool,
+      heat            => heat,
+      temp_display    => temp_display,
+      a_c_on          => a_c_on,
+      furnace_on      => furnace_on 
+    ); 
+
+
+    TEST: process
+
+    begin
+
+      current_temp    <= "0000000";
+      desired_temp    <= "0000000";
+      display_select  <= '0';
+      cool            <= '0';
+      heat            <= '0';
+      wait for 10ns;
+
+      -- test display select
+
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      display_select  <= '0';
+      wait for 10ns;
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      display_select  <= '1';
+      wait for 10ns;
+      wait for 10ns;
+
+      -- test AC
+
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      cool            <= '0';
+      wait for 10ns;
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      cool            <= '1';
+      wait for 10ns;
+      current_temp    <= "0001111";
+      desired_temp    <= "1110000";
+      cool            <= '0';
+      wait for 10ns;
+      current_temp    <= "0001111";
+      desired_temp    <= "1110000";
+      cool            <= '1';
+      wait for 10ns;
+      wait for 10ns;
+
+      -- test Furnace
+
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      heat            <= '0';
+      wait for 10ns;
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      heat            <= '1';
+      wait for 10ns;
+      current_temp    <= "0001111";
+      desired_temp    <= "1110000";
+      heat            <= '0';
+      wait for 10ns;
+      current_temp    <= "0001111";
+      desired_temp    <= "1110000";
+      heat            <= '1';
+      wait for 10ns;
+    end process TEST;
+end test_behav;
