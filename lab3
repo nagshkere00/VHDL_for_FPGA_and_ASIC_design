@@ -1,0 +1,201 @@
+entity reg_temp_ctl is
+  Port (
+    clk             : in bit;
+    areset          : in bit;
+    current_temp    : in bit_vector(6 downto 0);
+    desired_temp    : in bit_vector(6 downto 0);
+    display_select  : in bit;
+    cool            : in bit;
+    heat            : in bit;
+    temp_display    : out bit_vector(6 downto 0);
+    a_c_on          : out bit;
+    furnace_on      : out bit
+  );
+end reg_temp_ctl;
+
+architecture rtl of reg_temp_ctl is    
+
+signal current_temp_reg    : bit_vector(6 downto 0);
+signal desired_temp_reg    : bit_vector(6 downto 0);
+signal display_select_reg  : bit;
+signal cool_reg            : bit;
+signal heat_reg            : bit;
+
+begin
+
+    -- registering inputs
+    REG_INPUT : process(clk, areset)
+    begin
+        if (areset = '1') then
+            current_temp_reg    <= (others => '0');
+            desired_temp_reg    <= (others => '0');
+            display_select_reg  <= '0';
+            cool_reg            <= '0';
+            heat_reg            <= '0';
+        elsif (clk'event and clk = '1') then
+            current_temp_reg    <= current_temp;
+            desired_temp_reg    <= desired_temp;
+            display_select_reg  <= display_select;
+            cool_reg            <= cool;
+            heat_reg            <= heat;
+        end if;
+    end process REG_INPUT;
+
+    
+    DISPMUX : process(clk, areset)    
+    begin
+        if (areset = '1') then
+            temp_display <= (others => '0');
+        elsif (clk'event and clk = '1') then
+            if (display_select_reg = '1') then
+                temp_display <= current_temp_reg;
+            else
+                temp_display <= desired_temp_reg;
+            end if;
+        end if;
+    end process DISPMUX;
+    
+    AC_CTL : process(clk, areset)
+    begin
+        if (areset = '1') then
+            a_c_on <= '0';
+        elsif (clk'event and clk = '1') then
+            if (cool_reg = '1') and (desired_temp_reg < current_temp_reg) then
+                a_c_on <= '1';
+            else
+                a_c_on <= '0';
+            end if;
+        end if;
+    end process AC_CTL;
+    
+    FURNACE_CTL : process(clk, areset)    
+    begin
+        if (areset = '1') then
+            furnace_on <= '0';
+        elsif (clk'event and clk = '1') then
+            if (heat_reg = '1') and (desired_temp_reg > current_temp_reg) then
+                furnace_on <= '1';
+            else
+                furnace_on <= '0';
+            end if;
+        end if;
+    end process FURNACE_CTL;
+
+end rtl;
+
+
+Testbench code,
+
+entity tb_temp_ctl is
+--  Port ( );
+end tb_temp_ctl;
+
+architecture test_behav of tb_temp_ctl is
+
+component reg_temp_ctl is
+  Port (
+    clk             : in bit;
+    areset          : in bit;
+    current_temp    : in bit_vector(6 downto 0);
+    desired_temp    : in bit_vector(6 downto 0);
+    display_select  : in bit;
+    cool            : in bit;
+    heat            : in bit;
+    temp_display    : out bit_vector(6 downto 0);
+    a_c_on          : out bit;
+    furnace_on      : out bit
+  );
+end component;
+
+signal clk             : bit := '1';
+signal areset          : bit;
+signal current_temp    : bit_vector(6 downto 0);
+signal desired_temp    : bit_vector(6 downto 0);
+signal display_select  : bit;
+signal cool            : bit;
+signal heat            : bit;
+signal temp_display    : bit_vector(6 downto 0);
+signal a_c_on          : bit;
+signal furnace_on      : bit;
+
+begin
+
+    clk <= not clk after 5 ns;
+
+    areset <= '1', '0' after 20 ns;
+
+    UUT: reg_temp_ctl port map (
+      clk             => clk,
+      areset          => areset,
+      current_temp    => current_temp,
+      desired_temp    => desired_temp,
+      display_select  => display_select,
+      cool            => cool,
+      heat            => heat,
+      temp_display    => temp_display,
+      a_c_on          => a_c_on,
+      furnace_on      => furnace_on  
+    );  
+
+    TEST: process
+    begin
+      current_temp    <= "0000000";
+      desired_temp    <= "0000000";
+      display_select  <= '0';
+      cool            <= '0';
+      heat            <= '0';
+      wait for 40 ns;
+
+      -- test display select
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      display_select  <= '0';
+      wait for 40 ns;
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      display_select  <= '1';
+      wait for 40 ns;
+
+      wait for 40 ns;
+
+      -- test AC
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      cool            <= '0';
+      wait for 40 ns;
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      cool            <= '1';
+      wait for 40 ns;
+      current_temp    <= "0001111";
+      desired_temp    <= "1110000";
+      cool            <= '0';
+      wait for 40 ns;
+      current_temp    <= "0001111";
+      desired_temp    <= "1110000";
+      cool            <= '1';
+      wait for 40 ns;
+
+      wait for 40 ns;
+
+      -- test Furnace
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      heat            <= '0';
+      wait for 40 ns;
+      current_temp    <= "1110000";
+      desired_temp    <= "0001111";
+      heat            <= '1';
+      wait for 40 ns;
+      current_temp    <= "0001111";
+      desired_temp    <= "1110000";
+      heat            <= '0';
+      wait for 40 ns;
+      current_temp    <= "0001111";
+      desired_temp    <= "1110000";
+      heat            <= '1';
+      wait for 40 ns;
+      
+    end process TEST;
+    
+end test_behav;
